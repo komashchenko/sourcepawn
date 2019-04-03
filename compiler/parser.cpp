@@ -1064,7 +1064,7 @@ static void setconfig(char *root)
 
 static void setcaption(void)
 {
-  pc_printf("SourcePawn Compiler %s\n", SOURCEPAWN_VERSION);
+  pc_printf("SourcePawn Compiler %s [Support #emit 1.1]\n", SOURCEPAWN_VERSION);
   pc_printf("Copyright (c) 1997-2006 ITB CompuPhase\n");
   pc_printf("Copyright (c) 2004-2018 AlliedModders LLC\n\n");
 }

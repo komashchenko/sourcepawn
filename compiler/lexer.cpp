@@ -79,6 +79,8 @@ static int listline=-1; /* "current line" for the list file */
 
 static bool sLiteralQueueDisabled = false;
 
+const char *sc_tokens[];
+
 ke::HashMap<CharsAndLength, int, KeywordTablePolicy> sKeywords;
 
 AutoDisableLiteralQueue::AutoDisableLiteralQueue()
@@ -1056,6 +1058,120 @@ static int command(void)
       inpf=NULL;
     } /* if */
     break;
+  case tpEMIT: {
+    if (!SKIPPING) {
+      /* write opcode to output file */
+      char name[40];
+      int i;
+      insert_dbgline(fline);
+      while (*lptr <= ' ' && *lptr != '\0')
+        lptr++;
+      for (i = 0; i < 40 && (isalpha(*lptr) || isdigit(*lptr) || *lptr == '.'); i++, lptr++)
+        name[i] = (char)tolower(*lptr);
+      name[i] = '\0';
+      stgwrite("\t");
+      stgwrite(name);
+      stgwrite(" ");
+      code_idx += opcodes(1);
+      /* write parameter (if any) */
+      while (*lptr <= ' ' && *lptr != '\0')
+        lptr++;
+      if (*lptr != '\0') {
+        unsigned const char *lptr_ = lptr;
+        int prms = 1;
+        while (*lptr_ != '\0')
+        {
+          if (isalpha(*lptr_) || isdigit(*lptr_)) lptr_++;
+          else if (*lptr_ == ' ')
+          {
+            while (*lptr_ == ' ') lptr_++;
+            if (isalpha(*lptr_) || isdigit(*lptr_)) prms++;
+          }
+          else break;
+        }
+        
+        for (i = 0; i < prms; i++)
+        {
+          symbol *sym;
+          tok = lex(&val, &str);
+          switch (tok) {
+          case tNUMBER:
+          case tRATIONAL:
+            outval(val, FALSE);
+            code_idx += opargs(1);
+            break;
+          case tSYMBOL:
+            sym = findglb(str);
+            if (sym == NULL) sym = findloc(str);
+            if (sym == NULL || (sym->ident != iFUNCTN && (sym->usage & uDEFINE) == 0)) {
+              error(17, str);        /* undefined symbol */
+            }
+            else {
+              if (sym->ident == iFUNCTN) {
+                if ((sym->usage & uNATIVE) != 0) {
+                  /* reserve a SYSREQ id if called for the first time  */
+                  if (sc_status == statWRITE && (sym->usage & uREAD) == 0 && sym->addr() >= 0)
+                    sym->setAddr(ntv_funcid++);
+                  outval(sym->addr(), FALSE);
+                }
+                else {
+                  /* normal function, write its name instead of the address
+                  * so that the address will be resolved at assemble time
+                  */
+                  //stgwrite("l.");
+                  stgwrite(sym->name());
+                } /* if */
+                /* mark function as "used" */
+                /* do NOT mark it as written as that has a different meaning for
+                * functions (marks them as "should return a value") */
+                if (sc_status != statSKIP)
+                  markusage(sym, uREAD);
+              }
+              else {
+                outval(sym->addr(), FALSE);
+                /* mark symbol as "used", unknown whether for read or write */
+                markusage(sym, uREAD | uWRITTEN);
+              } /* if */
+              code_idx += opargs(1);
+            } /* if */
+            break;
+          default: {
+            char s2[33] = "-";
+            if ((char)tok == '-') {
+              int current_token = lex(&val, &str);
+              if (current_token == tNUMBER) {
+                outval(-val, FALSE);
+                code_idx += opargs(1);
+                break;
+              }
+              else if (current_token == tRATIONAL) {
+                /* change the first bit to make float negative value */
+                outval(val | 0x80000000, FALSE);
+                code_idx += opargs(1);
+                break;
+              }
+              else {
+                strcpy(s2 + 1, str);
+                error(1, sc_tokens[tSYMBOL - tFIRST], s2);
+                break;
+              } /* if */
+            } /* if */
+            if (tok < 256)
+              sprintf(s2, "%c", (char)tok);
+            else
+              strcpy(s2, sc_tokens[tok - tFIRST]);
+            error(1, sc_tokens[tSYMBOL - tFIRST], s2);
+            break;
+          } /* case */
+          } /* switch */
+          if (i < prms - 1) stgwrite(" ");
+        } /* if */
+      }
+      stgwrite("\n");
+      check_empty(lptr);
+    } /* if */
+    break;
+  } /* case */
   case tpDEFINE: {
     ret=CMD_DEFINE;
     if (!SKIPPING) {
@@ -1809,7 +1925,7 @@ const char *sc_tokens[] = {
          "volatile",
          "while",
          "with",
-         "#assert", "#define", "#else", "#elseif", "#endif", "#endinput",
+         "#assert", "#define", "#else", "#elseif", "#emit", "#endif", "#endinput",
          "#endscript", "#error", "#warning", "#file", "#if", "#include",
          "#line", "#pragma", "#tryinclude", "#undef",
          ";", ";", "-integer value-", "-rational value-", "-identifier-",
